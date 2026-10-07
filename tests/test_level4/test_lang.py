@@ -1,5 +1,6 @@
 """Test language selectors."""
 from .. import util
+import soupsieve as sv
 
 
 class TestLang(util.TestCase):
@@ -44,6 +45,12 @@ class TestLang(util.TestCase):
             ['1', '2', '3', '4', '5', '6'],
             flags=util.HTML
         )
+
+    def test_lang_unclosed_quote(self):
+        """Test language with an unclosed quoted value fails for syntax error, not timeout error."""
+
+        self.assert_raises_no_timeout('p:lang("' + ('x' * 300), sv.SelectorSyntaxError)
+        self.assert_raises_no_timeout("p:lang('" + ('x' * 300), sv.SelectorSyntaxError)
 
     def test_lang_missing_range(self):
         """Test language range with a missing range."""

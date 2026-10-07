@@ -2,6 +2,8 @@
 import unittest
 import bs4
 import textwrap
+import platform
+import signal
 import soupsieve as sv
 import pytest
 
@@ -102,6 +104,34 @@ class TestCase(unittest.TestCase):
         print('----Running Assert Test----')
         with self.assertRaises(exception):
             self.compile_pattern(pattern, namespaces=namespace, custom=custom)
+
+    def assert_raises_no_timeout(self, pattern, exception, timeout=3):
+        """Assert compiling the pattern raises the exception rather than hanging (catastrophic backtracking)."""
+
+        print('----Running Assert No Timeout Test----')
+        print('PATTERN: ', pattern)
+        if platform.system() == 'Windows' or not hasattr(signal, 'SIGALRM'):
+            with self.assertRaises(exception):
+                sv.compile(pattern)
+            return
+
+        def timeout_handler(signum, frame):
+            raise TimeoutError
+
+        original = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout)
+
+        passed = False
+        try:
+            with self.assertRaises(exception):
+                sv.compile(pattern)
+            passed = True
+        except TimeoutError:
+            pass
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, original)
+        self.assertTrue(passed, 'Compiling the pattern timed out')
 
     def assert_selector(self, markup, selectors, expected_ids, namespaces={}, custom=None, flags=0):
         """Assert selector."""
