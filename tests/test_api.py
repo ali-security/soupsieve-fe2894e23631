@@ -590,6 +590,92 @@ class TestInvalid(util.TestCase):
         with self.assertRaises(TypeError):
             sv.filter('div', "not a tag", flags=flags)
 
+    def test_excessive_selectors(self):
+        """Test excessive selectors."""
+
+        # Build a 500 KB selector string: "a,a,a,...,a" (250,000 items)
+        count = 10000
+        selector = ",".join("a" for _ in range(count))
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile(selector)
+
+    def test_excessive_custom_selectors(self):
+        """Test excessive custom selectors."""
+
+        # Build a 500 KB selector string: "a,a,a,...,a" (250,000 items)
+        count = 10000
+        selector = ",".join("a" for _ in range(count))
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile('div:--custom', custom={':--custom': selector})
+
+    def test_excessive_custom_and_normal_selectors(self):
+        """Test excessive custom and normal selectors."""
+
+        count = 5000
+        selector = ",".join("a" for _ in range(count))
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile(':is({}):--custom'.format(selector), custom={':--custom': selector})
+
+    def test_selector_limit_boundary(self):
+        """Test that selectors at the limit compile, but one more does not."""
+
+        limit = sv.cp.SELECTOR_LIMIT
+
+        pattern = sv.compile(",".join("a" for _ in range(limit)))
+        self.assertEqual(pattern.selectors.count, limit)
+        self.assertEqual(len(pattern.selectors), limit)
+
+        with self.assertRaises(ValueError):
+            sv.compile(",".join("a" for _ in range(limit + 1)))
+
+    def test_excessive_reused_custom_selectors(self):
+        """Test that a cached custom selector is counted each time it is used."""
+
+        # The custom selector is only compiled once, but every reference expands to 100 selectors.
+        custom = ",".join("a" for _ in range(100))
+
+        with self.assertRaises(ValueError):
+            sv.compile('div' + ':--custom' * 100, custom={':--custom': custom})
+
+    def test_excessive_builtin_pseudo_class_selectors(self):
+        """Test that built-in pseudo-classes count the selectors they expand to."""
+
+        # 1000 tokens alone is well under the limit, but `:read-only` expands to many selectors.
+        with self.assertRaises(ValueError):
+            sv.compile(':read-only' * 1000)
+
+    def test_excessive_nth_child_default_selectors(self):
+        """Test that `:nth-child` counts its implied `of S` selector."""
+
+        # 5000 tokens alone is under the limit, but each also uses the default `*|*` selector.
+        with self.assertRaises(ValueError):
+            sv.compile(':nth-child(2)' * 5000)
+
+    def test_selector_count_preserved(self):
+        """Test that the selector count survives pickling and does not affect matching."""
+
+        markup = """
+        <div>
+        <p id="1">Text</p>
+        <span id="2">Text</span>
+        </div>
+        """
+
+        soup = self.soup(markup, 'html.parser')
+        pattern = sv.compile(",".join("p" for _ in range(1000)) + ', span:--custom', custom={':--custom': 'span'})
+        self.assertEqual(pattern.selectors.count, 1003)
+
+        unpickled = pickle.loads(pickle.dumps(pattern))
+        self.assertEqual(unpickled.selectors.count, pattern.selectors.count)
+        self.assertTrue(unpickled == pattern)
+        self.assertEqual(sorted(el['id'] for el in unpickled.select(soup)), ['1', '2'])
+
 
 class TestSyntaxErrorReporting(util.TestCase):
     """Test reporting of syntax errors."""
